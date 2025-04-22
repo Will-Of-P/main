@@ -30,7 +30,7 @@
   <div class="container" id="pools"></div>
 
   <script>
-    // Configuration
+    // Configurations
     const RPC_URL = 'https://testnet-rpc.monad.xyz';
     const CHAIN_ID = 10143;
     const STAKING_ADDRESS = 'YOUR_STAKING_CONTRACT_ADDRESS';
@@ -60,12 +60,13 @@
 
     let provider, signer, stakingContract;
 
-    // Initialize UI
+    // Initialize pool cards
     function initUI() {
       const container = document.getElementById('pools');
       container.innerHTML = '';
       POOLS.forEach(pool => {
-        const card = document.createElement('div'); card.className = 'card';
+        const card = document.createElement('div');
+        card.className = 'card';
         card.id = 'pool-' + pool.id;
         card.innerHTML = `
           <h3>${pool.name}</h3>
@@ -100,52 +101,52 @@
       startUpdate();
     }
 
-    // Handle stake/withdraw/harvest
+    // Handle transactions
     async function handleTx(pid, action) {
       if (!signer) return alert('Please connect your wallet first');
       const input = document.querySelector('#pool-' + pid + ' .input');
       const val = ethers.utils.parseUnits(input.value || '0', 18);
       let tx;
       if (action === 'stake') tx = await stakingContract.stake(pid, val);
-      if (action === 'withdraw') tx = await stakingContract.withdraw(pid, val);
-      if (action === 'harvest') tx = await stakingContract.harvest(pid);
+      else if (action === 'withdraw') tx = await stakingContract.withdraw(pid, val);
+      else if (action === 'harvest') tx = await stakingContract.harvest(pid);
       await tx.wait();
       updatePool(pid);
     }
 
     // Update a single pool
     async function updatePool(pid) {
-      const card = document.getElementById('pool-' + pid);
-      const info = await stakingContract.poolInfo(pid);
-      const totalStaked = info[2];
-      const totalCoeff = await stakingContract.getTotalCoefficient();
-      const pending = await stakingContract.pendingReward(pid, await signer.getAddress());
-      card.querySelector('.pending').innerText = ethers.utils.formatUnits(pending, 18);
+      try {
+        const card = document.getElementById('pool-' + pid);
+        const info = await stakingContract.poolInfo(pid);
+        const totalStaked = info[2];
+        const totalCoeff = await stakingContract.getTotalCoefficient();
+        const pending = await stakingContract.pendingReward(pid, await signer.getAddress());
+        card.querySelector('.pending').innerText = ethers.utils.formatUnits(pending, 18);
 
-      // APR calculation
-      let price = 1;
-      if (POOLS[pid].pair) {
-        const pair = new ethers.Contract(POOLS[pid].pair, pairAbi, provider);
-        const [r0, r1] = await pair.getReserves();
-        const token0 = (await pair.token0()).toLowerCase();
-        const tk = POOLS[pid].token.toLowerCase();
-        price = token0 === tk ? Number(r1) / Number(r0) : Number(r0) / Number(r1);
+        let price = 1;
+        if (POOLS[pid].pair) {
+          const pair = new ethers.Contract(POOLS[pid].pair, pairAbi, provider);
+          const [r0, r1] = await pair.getReserves();
+          const token0 = (await pair.token0()).toLowerCase();
+          const tk = POOLS[pid].token.toLowerCase();
+          price = token0 === tk ? Number(r1) / Number(r0) : Number(r0) / Number(r1);
+        }
+        const poolReward = REWARD_PER_BLOCK.mul(POOLS[pid].coef).div(totalCoeff);
+        const annual = poolReward.mul(BLOCKS_PER_YEAR);
+        const apr = (Number(ethers.utils.formatUnits(annual, 18))) /
+                    (Number(ethers.utils.formatUnits(totalStaked, 18)) * price) * 100;
+        card.querySelector('.apr').innerText = apr.toFixed(2);
+      } catch (e) {
+        console.error('Error updating pool', pid, e);
       }
-      const poolReward = REWARD_PER_BLOCK.mul(POOLS[pid].coef).div(totalCoeff);
-      const annual = poolReward.mul(BLOCKS_PER_YEAR);
-      const apr = (Number(ethers.utils.formatUnits(annual, 18))) / (Number(ethers.utils.formatUnits(totalStaked,18)) * price) * 100;
-      card.querySelector('.apr').innerText = apr.toFixed(2);
     }
 
-    // Start periodic updates
-    function startUpdate() {
+    // Start UI and polling after DOM ready
+    window.addEventListener('DOMContentLoaded', () => {
       initUI();
-      POOLS.forEach(p => updatePool(p.id));
-      setInterval(() => POOLS.forEach(p => updatePool(p.id)), 60000);
-    }
-
-    document.getElementById('connectBtn').onclick = connectWallet;
-    initUI();
+      document.getElementById('connectBtn').addEventListener('click', connectWallet);
+    });
   </script>
 </body>
 </html>
