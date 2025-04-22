@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MultiToken Staking Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 1rem; background: #f5f5f5; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+    .container { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem; }
+    .card { background: #fff; padding: 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .card h3 { margin-top: 0; }
+    .card input { width: 100%; padding: 0.5rem; margin: 0.5rem 0; }
+    .card button { margin-right: 0.5rem; padding: 0.5rem 1rem; cursor: pointer; }
+    .connect-btn { padding: 0.5rem 1rem; cursor: pointer; }
+  </style>
+  <!-- Ethers.js -->
+  <script src="https://cdn.jsdelivr.net/npm/ethers/dist/ethers.min.js"></script>
+  <!-- WalletConnect Provider -->
+  <script src="https://cdn.jsdelivr.net/npm/@walletconnect/web3-provider/dist/umd/index.min.js"></script>
+</head>
+<body>
+  <div class="header">
+    <h1>Staking Dashboard</h1>
+    <button id="connectBtn" class="connect-btn">Connect Wallet</button>
+  </div>
+  <div id="address"></div>
+  <div class="container" id="pools"></div>
+
+  <script>
+    // Config
+    const RPC_URL = 'https://testnet-rpc.monad.xyz';
+    const CHAIN_ID = 10143;
+    const STAKING_ADDRESS = 'YOUR_STAKING_CONTRACT_ADDRESS';
+    const POOLS = [
+      { id: 0, name: 'Pillnads', token: '0x9569ad4B353D4811064ad9970B198fcb914428D5', pair: '0x40D246C89faaE90E0Dca14C9E27766b829226315', coef: 5000 },
+      { id: 1, name: 'SLMNDBULL', token: '0xb089B641b9FD73b3fcE86B32bEAcD750307A06bD', pair: '0xa3390F4E5B629e5E7B4136483568d939F30B7B92', coef: 2600 },
+      { id: 2, name: 'BEnads', token: '0xd2edDe27685b91E1Bc0Cbf5dC23518eDcbe2a89A', pair: '0xB88618f98e27eAD374a866AF9ef551329ab29fEf', coef: 850 },
+      { id: 3, name: 'P', token: '0x37f59e27A6D49f288Ff10e94ecAc7eCf61Be2675', pair: null, coef: 1550 }
+    ];
+    const stakingAbi = [
+      'function getTotalCoefficient() view returns (uint256)',
+      'function poolInfo(uint256) view returns (address,uint256,uint256,uint256,uint256)',
+      'function pendingReward(uint256,address) view returns (uint256)',
+      'function stake(uint256,uint256)',
+      'function withdraw(uint256,uint256)',
+      'function harvest(uint256)'
+    ];
+    const pairAbi = [
+      'function getReserves() view returns (uint112,uint112,uint32)',
+      'function token0() view returns (address)',
+      'function token1() view returns (address)'
+    ];
+
+    let provider, signer, stakingContract;
+
+    // Render pool cards
+    function initUI() {
+      const container = document.getElementById('pools');
+      container.innerHTML = '';
+      POOLS.forEach(pool => {
+        const card = document.createElement('div'); card.className = 'card';
+        card.id = 'pool-' + pool.id;
+        card.innerHTML = `
+          <h3>\${pool.name}</h3>
+          <p>APR: <span class="apr">-</span>%</p>
+          <p>Pending: <span class="pending">-</span></p>
+          <input type="number" placeholder="Amount" class="input" />
+          <div>
+            <button class="btn stake">Stake</button>
+            <button class="btn withdraw">Withdraw</button>
+            <button class="btn harvest">Harvest</button>
+          </div>`;
+        container.appendChild(card);
+
+        // Attach handlers
+        card.querySelector('.stake').onclick = () => handleTx(pool.id, 'stake');
+        card.querySelector('.withdraw').onclick = () => handleTx(pool.id, 'withdraw');
+        card.querySelector('.harvest').onclick = () => handleTx(pool.id, 'harvest');
+      });
+    }
+
+    // Connect wallet via WalletConnect
+    async function connectWallet() {
+      const wcProvider = new window.WalletConnectProvider.default({
+        rpc: { [CHAIN_ID]: RPC_URL }
+      });
+      await wcProvider.enable();
+      provider = new ethers.providers.Web3Provider(wcProvider);
+      signer = provider.getSigner();
+      document.getElementById('address').innerText = 'Address: ' + await signer.getAddress();
+      stakingContract = new ethers.Contract(STAKING_ADDRESS, stakingAbi, signer);
+      startUpdate();
+    }
+
+    // Handle transactions
+    async function handleTx(pid, action) {
+      if (!signer) return alert('Connect wallet first');
+      const input = document.querySelector('#pool-' + pid + ' .input');
+      const amount = input.value;
+      let tx;
+      if (action === 'stake') tx = await stakingContract.stake(pid, ethers.utils.parseUnits(amount || '0', 18));
+      if (action === 'withdraw') tx = await stakingContract.withdraw(pid, ethers.utils.parseUnits(amount || '0', 18));
+      if (action === 'harvest') tx = await stakingContract.harvest(pid);
+      await tx.wait();
+      updatePool(pid);
+    }
+
+    // Fetch and update one pool
+    async function updatePool(pid) {
+      const card = document.getElementById('pool-' + pid);
+      const data = await stakingContract.poolInfo(pid);
+      const totalStaked = data[2];
+      const totalCoeff = await stakingContract.getTotalCoefficient();
+      const pending = await stakingContract.pendingReward(pid, await signer.getAddress());
+      card.querySelector('.pending').innerText = ethers.utils.formatUnits(pending, 18);
+
+      // APR calculation
+      let price = 1;
+      if (POOLS[pid].pair) {
+        const pair = new ethers.Contract(POOLS[pid].pair, pairAbi, provider);
+        const [r0, r1] = await pair.getReserves();
+        const token0 = (await pair.token0()).toLowerCase();
+        const tk = POOLS[pid].token.toLowerCase();
+        price = token0 === tk ? Number(r1)/Number(r0) : Number(r0)/Number(r1);
+      }
+      const poolReward = ethers.BigNumber.from(REWARD_PER_BLOCK).mul(POOLS[pid].coef).div(totalCoeff);
+      const annual = poolReward.mul(63072000);
+      const apr = (Number(ethers.utils.formatUnits(annual, 18)))/(Number(ethers.utils.formatUnits(totalStaked,18))*price)*100;
+      card.querySelector('.apr').innerText = apr.toFixed(2);
+    }
+
+    // Periodic update
+    function startUpdate() {
+      initUI();
+      POOLS.forEach(p => updatePool(p.id));
+      setInterval(() => POOLS.forEach(p => updatePool(p.id)), 60000);
+    }
+
+    document.getElementById('connectBtn').onclick = connectWallet;
+    initUI();
+  </script>
+</body>
+</html>
