@@ -201,25 +201,33 @@
       POOLS.forEach((_,i) => refreshPool(i));
     }
 
-    async function refreshPool(i) {
-      const pool = poolContracts[i];
-      const info = await pool.userInfo(userAddress);
-      const stakedBN = info.amount;
-      const staked   = parseFloat(ethers.utils.formatUnits(stakedBN,18));
-      document.getElementById(`staked-${i}`).textContent = 'Staked: ' + customRound(staked);
-
-      let apr = '0.00';
-      if (!stakedBN.isZero()) {
-        const infBN = await pool.annualInflation();
-        const inf   = parseFloat(ethers.utils.formatUnits(infBN,18));
-        apr = customRound(inf / staked * 100);
-      }
-      document.getElementById(`apr-${i}`).textContent = 'APR: ' + apr + ' %';
-
-      const pendBN = await pool.pending(userAddress);
-      const pend   = parseFloat(ethers.utils.formatUnits(pendBN,18));
-      document.getElementById(`pending-${i}`).textContent = 'Pending Reward: ' + customRound(pend);
+  async function refreshPool(i) {
+    const pool = poolContracts[i];
+  
+    // 1) Lấy thông tin user stake
+    const info       = await pool.userInfo(userAddress);
+    const userStaked = parseFloat(ethers.utils.formatUnits(info.amount, 18));
+    document.getElementById(`staked-${i}`).textContent =
+      'Staked: ' + customRound(userStaked);
+  
+    // 2) Tính APR dựa trên TOTAL pool stake
+    const totalStakedBN = await pool.totalStaked();
+    let apr = '0.00';
+    if (!totalStakedBN.isZero()) {
+      // Annual inflation in rewardToken units, converted to stakeToken via oracle
+      const infBN = await pool.annualInflation();
+      const inf   = parseFloat(ethers.utils.formatUnits(infBN, 18));
+      const totalStaked = parseFloat(ethers.utils.formatUnits(totalStakedBN, 18));
+      apr = customRound((inf / totalStaked) * 100);
     }
+    document.getElementById(`apr-${i}`).textContent = 'APR: ' + apr + ' %';
+  
+    // 3) Pending reward (rewardToken)
+    const pendBN = await pool.pending(userAddress);
+    const pend   = parseFloat(ethers.utils.formatUnits(pendBN, 18));
+    document.getElementById(`pending-${i}`).textContent =
+      'Pending Reward: ' + customRound(pend);
+  }
 
     async function doStake(i) {
       const amt = document.getElementById(`stake-amt-${i}`).value;
