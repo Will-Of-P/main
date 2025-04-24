@@ -22,19 +22,9 @@
       padding: 20px;
       text-align: center;
     }
-    .card h2 {
-      margin-bottom: 10px;
-      font-size: 20px;
-      color: #333;
-    }
-    .stats p {
-      margin: 6px 0;
-      font-size: 14px;
-      color: #444;
-    }
-    .group {
-      margin-top: 15px;
-    }
+    .card h2 { margin-bottom: 10px; font-size: 20px; color: #333; }
+    .stats p { margin: 6px 0; font-size: 14px; color: #444; }
+    .group { margin-top: 15px; }
     input[type="number"] {
       padding: 8px;
       width: 60%;
@@ -52,27 +42,28 @@
       cursor: pointer;
       transition: background 0.2s, transform 0.1s;
     }
-    button {
-      background: #007bff; color: #fff;
-    }
+    button { background: #007bff; color: #fff; }
     button:hover { background: #0056b3; transform: translateY(-1px); }
-    .max-btn {
-      background: #28a745; color: #fff;
-    }
+    .max-btn { background: #28a745; color: #fff; }
     .max-btn:hover { background: #1e7e34; transform: translateY(-1px); }
-    #connect-wallet-btn, #disconnect-btn {
-      margin-bottom: 20px;
+    #disconnect-btn {
       padding: 10px 20px;
       font-size: 15px;
-      border: none; border-radius: 6px;
-      background: #0069d9; color: #fff;
+      border: none;
+      border-radius: 6px;
+      background: #dc3545;
+      color: #fff;
       cursor: pointer;
+      margin-bottom: 20px;
     }
-    #disconnect-btn { background: #dc3545; }
     #disconnect-btn:hover { background: #c82333; }
     .status {
       font-size: 14px;
       color: #555;
+      margin-bottom: 20px;
+    }
+    .header {
+      text-align: center;
       margin-bottom: 20px;
     }
   </style>
@@ -81,49 +72,28 @@
   <script src="https://unpkg.com/@walletconnect/web3-provider@1.8.0/dist/umd/index.min.js"></script>
 </head>
 <body>
-  <div style="text-align:center;">
-    <button id="connect-wallet-btn">Connect Wallet</button>
+  <div class="header">
     <div id="disconnect-area"></div>
-    <p class="status" id="status">Disconnected</p>
+    <p class="status" id="status">Connecting...</p>
   </div>
 
-  <div class="grid" id="pools-container">
-    <!-- Cards sẽ được JS đổ vào đây -->
-  </div>
+  <div class="grid" id="pools-container"></div>
 
   <script>
     const POOLS = [
-      {
-        name: 'PILLNADS',
-        token: '0x9569ad4B353D4811064ad9970B198fcb914428D5',
-        contract: '0x4B630e4A436EAa4a1cAAfaE543c544Ff3c277114',
-      },
-      {
-        name: 'SLMNDBULL',
-        token: '0xb089B641b9FD73b3fcE86B32bEAcD750307A06bD',
-        contract: '0xB85eCB8517dA24882B0ca084ceFB01C5313AfB73',
-      },
-      {
-        name: 'BeNADS',
-        token: '0xd2edDe27685b91E1Bc0Cbf5dC23518eDcbe2a89A',
-        contract: '0x630158baA432Cc285d0aE8C8482cf1AA6E3f9760',
-      },
-      {
-        name: 'P',
-        token: '0x65fA3cb0bE5Cd8fB2db7D5B200d02A469FCcd747',
-        contract: '0x23d7EA99Da16158EA2eC76755AE9313efDfc3A3f',
-      }
+      { name: 'PILLNADS',    token: '0x9569ad4B353D4811064ad9970B198fcb914428D5', contract: '0x4B630e4A436EAa4a1cAAfaE543c544Ff3c277114' },
+      { name: 'SLMNDBULL',   token: '0xb089B641b9FD73b3fcE86B32bEAcD750307A06bD', contract: '0xB85eCB8517dA24882B0ca084ceFB01C5313AfB73' },
+      { name: 'BeNADS',      token: '0xd2edDe27685b91E1Bc0Cbf5dC23518eDcbe2a89A', contract: '0x630158baA432Cc285d0aE8C8482cf1AA6E3f9760' },
+      { name: 'P',           token: '0x65fA3cb0bE5Cd8fB2db7D5B200d02A469FCcd747', contract: '0x23d7EA99Da16158EA2eC76755AE9313efDfc3A3f' },
     ];
-
-    const RPC_URL    = 'https://rpc-testnet.monad.xyz';
-    const CHAIN_ID   = 10143;
+    const RPC_URL  = 'https://testnet-rpc.monad.xyz';
+    const CHAIN_ID = 10143;
     const providerOptions = {
       walletconnect: {
         package: window.WalletConnectProvider.default,
         options: { rpc: { [CHAIN_ID]: RPC_URL }, chainId: CHAIN_ID }
       }
     };
-
     const web3Modal = new window.Web3Modal.default({
       network: 'custom',
       cacheProvider: true,
@@ -147,7 +117,7 @@
     ];
 
     let provider, signer, userAddress;
-    let poolContracts = {}, tokenContracts = {};
+    const poolContracts = {}, tokenContracts = {};
 
     // Tạo UI cards
     const container = document.getElementById('pools-container');
@@ -197,13 +167,15 @@
         }
         signer = provider.getSigner();
         userAddress = await signer.getAddress();
-        document.getElementById('connect-wallet-btn').style.display = 'none';
+
+        // Hiện nút Disconnect
         const disc = document.createElement('button');
         disc.id = 'disconnect-btn';
-        disc.textContent = 'Disconnect';
+        disc.textContent = 'Disconnect Wallet';
         disc.onclick = () => { web3Modal.clearCachedProvider(); location.reload(); };
         document.getElementById('disconnect-area').appendChild(disc);
         document.getElementById('status').textContent = '';
+
         initContracts();
         refreshAll();
         setInterval(refreshAll, 30000);
@@ -229,34 +201,25 @@
       POOLS.forEach((_,i) => refreshPool(i));
     }
 
- async function refreshPool(i) {
-   const pool = poolContracts[i];
+    async function refreshPool(i) {
+      const pool = poolContracts[i];
+      const info = await pool.userInfo(userAddress);
+      const stakedBN = info.amount;
+      const staked   = parseFloat(ethers.utils.formatUnits(stakedBN,18));
+      document.getElementById(`staked-${i}`).textContent = 'Staked: ' + customRound(staked);
 
--  // Staked (toàn bộ pool)
--  const stakedBN = await pool.totalStaked();
--  const staked   = parseFloat(ethers.utils.formatUnits(stakedBN,18));
--  document.getElementById(`staked-${i}`).textContent = 'Staked: ' + customRound(staked);
+      let apr = '0.00';
+      if (!stakedBN.isZero()) {
+        const infBN = await pool.annualInflation();
+        const inf   = parseFloat(ethers.utils.formatUnits(infBN,18));
+        apr = customRound(inf / staked * 100);
+      }
+      document.getElementById(`apr-${i}`).textContent = 'APR: ' + apr + ' %';
 
-+  // Staked (của chính user)
-+  const info     = await pool.userInfo(userAddress);
-+  const stakedBN = info.amount;
-+  const staked   = parseFloat(ethers.utils.formatUnits(stakedBN, 18));
-+  document.getElementById(`staked-${i}`).textContent = 'Staked: ' + customRound(staked);
-
-   // APR
-   let apr = '0.00';
-   if (!stakedBN.isZero()) {
-     const infBN = await pool.annualInflation();
-     const inf   = parseFloat(ethers.utils.formatUnits(infBN,18));
-     apr = customRound(inf / staked * 100);
-   }
-   document.getElementById(`apr-${i}`).textContent = 'APR: ' + apr + ' %';
-
-   // Pending Reward
-   const pendBN = await pool.pending(userAddress);
-   const pend   = parseFloat(ethers.utils.formatUnits(pendBN,18));
-   document.getElementById(`pending-${i}`).textContent = 'Pending Reward: ' + customRound(pend);
- }
+      const pendBN = await pool.pending(userAddress);
+      const pend   = parseFloat(ethers.utils.formatUnits(pendBN,18));
+      document.getElementById(`pending-${i}`).textContent = 'Pending Reward: ' + customRound(pend);
+    }
 
     async function doStake(i) {
       const amt = document.getElementById(`stake-amt-${i}`).value;
@@ -264,11 +227,21 @@
       const token = tokenContracts[i], pool = poolContracts[i];
       const amount = ethers.utils.parseUnits(amt,18);
       const allowance = await token.allowance(userAddress, POOLS[i].contract);
-      if (allowance.lt(amount)) await token.approve(POOLS[i].contract, amount);
-      document.getElementById('status').textContent = 'Staking...';
-      await (await pool.stake(amount)).wait();
-      document.getElementById('status').textContent = 'Staked!';
-      setTimeout(() => refreshPool(i), 3000);
+      if (allowance.lt(amount)) {
+        document.getElementById('status').textContent = 'Approving...';
+        await (await token.approve(POOLS[i].contract, amount)).wait();
+        document.getElementById('status').textContent = 'Approved, staking...';
+      } else {
+        document.getElementById('status').textContent = 'Staking...';
+      }
+      try {
+        await (await pool.stake(amount)).wait();
+        document.getElementById('status').textContent = 'Staked!';
+        setTimeout(() => refreshPool(i), 3000);
+      } catch (err) {
+        console.error(err);
+        document.getElementById('status').textContent = 'Error staking';
+      }
     }
 
     async function doUnstake(i) {
@@ -299,15 +272,17 @@
     async function setMaxUnstake(i) {
       try {
         const info = await poolContracts[i].userInfo(userAddress);
-        const staked = parseFloat(ethers.utils.formatUnits(info.amount, 18));
+        const staked = parseFloat(ethers.utils.formatUnits(info.amount,18));
         document.getElementById(`unstake-amt-${i}`).value = customRound(staked);
       } catch (err) {
-        console.error("Error setting max unstake:", err);
+        console.error(err);
       }
     }
 
-    document.getElementById('connect-wallet-btn').onclick = connectWallet;
-    if (web3Modal.cachedProvider) connectWallet();
+    // Auto connect khi load trang
+    window.addEventListener('load', () => {
+      connectWallet();
+    });
   </script>
 </body>
 </html>
