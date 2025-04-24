@@ -229,27 +229,34 @@
       POOLS.forEach((_,i) => refreshPool(i));
     }
 
-    async function refreshPool(i) {
-      const pool = poolContracts[i];
-      // Staked
-      const stakedBN = await pool.totalStaked();
-      const staked   = parseFloat(ethers.utils.formatUnits(stakedBN,18));
-      document.getElementById(`staked-${i}`).textContent = 'Staked: ' + customRound(staked);
+ async function refreshPool(i) {
+   const pool = poolContracts[i];
 
-      // APR
-      let apr = '0.00';
-      if (!stakedBN.isZero()) {
-        const infBN = await pool.annualInflation();
-        const inf   = parseFloat(ethers.utils.formatUnits(infBN,18));
-        apr = customRound(inf / staked * 100);
-      }
-      document.getElementById(`apr-${i}`).textContent = 'APR: ' + apr + ' %';
+-  // Staked (toàn bộ pool)
+-  const stakedBN = await pool.totalStaked();
+-  const staked   = parseFloat(ethers.utils.formatUnits(stakedBN,18));
+-  document.getElementById(`staked-${i}`).textContent = 'Staked: ' + customRound(staked);
 
-      // Pending Reward
-      const pendBN = await pool.pending(userAddress);
-      const pend   = parseFloat(ethers.utils.formatUnits(pendBN,18));
-      document.getElementById(`pending-${i}`).textContent = 'Pending Reward: ' + customRound(pend);
-    }
++  // Staked (của chính user)
++  const info     = await pool.userInfo(userAddress);
++  const stakedBN = info.amount;
++  const staked   = parseFloat(ethers.utils.formatUnits(stakedBN, 18));
++  document.getElementById(`staked-${i}`).textContent = 'Staked: ' + customRound(staked);
+
+   // APR
+   let apr = '0.00';
+   if (!stakedBN.isZero()) {
+     const infBN = await pool.annualInflation();
+     const inf   = parseFloat(ethers.utils.formatUnits(infBN,18));
+     apr = customRound(inf / staked * 100);
+   }
+   document.getElementById(`apr-${i}`).textContent = 'APR: ' + apr + ' %';
+
+   // Pending Reward
+   const pendBN = await pool.pending(userAddress);
+   const pend   = parseFloat(ethers.utils.formatUnits(pendBN,18));
+   document.getElementById(`pending-${i}`).textContent = 'Pending Reward: ' + customRound(pend);
+ }
 
     async function doStake(i) {
       const amt = document.getElementById(`stake-amt-${i}`).value;
