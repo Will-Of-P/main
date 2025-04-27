@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>StakeToken Dashboard</title>
+  <style>
+    body {
+      background: #f4f8fb;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0; padding: 20px;
+      display: flex; justify-content: center;
+    }
+    .container {
+      width: 400px;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+      padding: 20px;
+      text-align: center;
+    }
+    h1 { margin-bottom: 15px; color: #333; }
+    .stats p {
+      margin: 8px 0;
+      font-size: 14px;
+      color: #444;
+    }
+    .group { margin-top: 15px; }
+    input[type="number"] {
+      padding: 8px; width: 60%;
+      font-size: 14px; border:1px solid #ccc;
+      border-radius:6px; text-align:center;
+    }
+    button, .max-btn {
+      margin: 5px 2px; padding:8px 14px;
+      font-size:14px; border:none; border-radius:6px;
+      cursor:pointer; transition:background .2s, transform .1s;
+    }
+    button { background:#007bff; color:#fff; }
+    button:hover { background:#0056b3; transform:translateY(-1px); }
+    .max-btn { background:#28a745; color:#fff; }
+    .max-btn:hover { background:#1e7e34; transform:translateY(-1px); }
+    #disconnect-btn {
+      margin-bottom:15px; background:#dc3545; color:#fff;
+    }
+    #disconnect-btn:hover { background:#c82333; }
+    .status {
+      font-size:14px; color:#555;
+      min-height:20px; margin-top:10px;
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+  <script src="https://unpkg.com/web3modal@1.9.8/dist/index.js"></script>
+  <script src="https://unpkg.com/@walletconnect/web3-provider@1.8.0/dist/umd/index.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <h1>StakeToken Dashboard</h1>
+    <div id="disconnect-area"></div>
+    <p class="status" id="status">Connecting...</p>
+
+    <div class="stats">
+      <p id="staked">Staked: -</p>
+      <p id="apr-p">APR $P: - %</p>
+      <p id="apr-dwo">APR $DWO: 4320 %</p>
+      <p id="pending-p">Pending $P: -</p>
+      <p id="pending-dwo">Pending $DWO: -</p>
+      <p id="lock-remain">Lock remain: -</p>
+    </div>
+
+    <div class="group">
+      <input type="number" id="stake-amt" placeholder="Amount to stake" step="any"/>
+      <button class="max-btn" id="stake-max">Max</button><br/>
+      <button id="stake-btn">Stake</button>
+    </div>
+    <div class="group">
+      <input type="number" id="unstake-amt" placeholder="Amount to unstake" step="any"/>
+      <button class="max-btn" id="unstake-max">Max</button><br/>
+      <button id="unstake-btn">Unstake</button>
+    </div>
+    <div class="group">
+      <button id="claim-btn">Claim All</button>
+    </div>
+  </div>
+
+  <script>
+    const RPC_URL    = 'https://testnet-rpc.monad.xyz';
+    const CHAIN_ID   = 10143;
+    const CONTRACT   = '0x23d7EA99Da16158EA2eC76755AE9313efDfc3A3f'; // replace with your deployed
+    const LOCK_DURATION = 3 * 24 * 3600; // 3 days
+    const DWO_APR = 4320;
+
+    const providerOptions = {
+      walletconnect: {
+        package: window.WalletConnectProvider.default,
+        options: { rpc: { [CHAIN_ID]: RPC_URL }, chainId: CHAIN_ID }
+      }
+    };
+    const web3Modal = new window.Web3Modal.default({
+      network: 'custom', cacheProvider: true, providerOptions
+    });
+
+    const ABI = [
+      "function stake(uint256) external",
+      "function unstake(uint256) external",
+      "function claim() external",
+      "function pendingReward(address) view returns (uint256)",
+      "function pendingStakeInterest(address) view returns (uint256)",
+      "function userInfo(address) view returns (uint256 amount, uint256 rewardDebt, uint256 pending)",
+      "function totalStaked() view returns (uint256)",
+      "function annualInflation() view returns (uint256)",
+      "function stakeTimestamp(address) view returns (uint256)"
+    ];
+
+    let provider, signer, contract, tokenContract, userAddress;
+
+    // minimal ERC20 for stakeToken (same as rewardToken math)
+    const ERC20_ABI = [
+      "function balanceOf(address) view returns (uint256)",
+      "function approve(address,uint256) returns (bool)",
+      "function allowance(address,address) view returns (uint256)"
+    ];
+    // stakeToken address from contract
+    const STAKE_TOKEN = '0x965f5c8Ad95fdFD330fBEf212a5Fd9869b907408';
+    let token;
+
+    function customRound(v) {
+      const r = parseFloat(v).toFixed(2);
+      return (parseFloat(r) - 0.01).toFixed(2);
+    }
+
+    async function connect() {
+      try {
+        const inst = await web3Modal.connect();
+        provider = new ethers.providers.Web3Provider(inst);
+        const net = await provider.getNetwork();
+        if (net.chainId !== CHAIN_ID) {
+          await provider.provider.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: '0x'+CHAIN_ID.toString(16) }]
+          });
+        }
+        signer = provider.getSigner();
+        userAddress = await signer.getAddress();
+        contract = new ethers.Contract(CONTRACT, ABI, signer);
+        token = new ethers.Contract(STAKE_TOKEN, ERC20_ABI, signer);
+
+        // show disconnect
+        document.getElementById('status').textContent = '';
+        const b = document.createElement('button');
+        b.id = 'disconnect-btn';
+        b.textContent = 'Disconnect';
+        b.onclick = () => { web3Modal.clearCachedProvider(); location.reload(); };
+        document.getElementById('disconnect-area').appendChild(b);
+
+        refreshAll();
+        setInterval(refreshAll, 30000);
+      } catch(e) {
+        console.error(e);
+        document.getElementById('status').textContent = 'Connect failed';
+      }
+    }
+
+    async function refreshAll() {
+      // 1) staked
+      const info = await contract.userInfo(userAddress);
+      const staked = parseFloat(ethers.utils.formatUnits(info.amount,18));
+      document.getElementById('staked').textContent = 'Staked: ' + customRound(staked);
+
+      // 2) APR total
+      const totalStakedBN = await contract.totalStaked();
+      let aprP = '0.00';
+      if (!totalStakedBN.isZero()) {
+        const infBN = await contract.annualInflation();
+        const inf   = parseFloat(ethers.utils.formatUnits(infBN,18));
+        const total = parseFloat(ethers.utils.formatUnits(totalStakedBN,18));
+        const totalAPR = inf/total*100;
+        aprP = customRound(totalAPR - DWO_APR);
+      }
+      document.getElementById('apr-p').textContent = 'APR $P: ' + aprP + ' %';
+
+      // APR DWO fixed
+      document.getElementById('apr-dwo').textContent = 'APR $DWO: ' + DWO_APR + ' %';
+
+      // 3) pending
+      const pP = await contract.pendingReward(userAddress);
+      const pD = await contract.pendingStakeInterest(userAddress);
+      document.getElementById('pending-p').textContent   =
+        'Pending $P: ' + customRound(ethers.utils.formatUnits(pP,18));
+      document.getElementById('pending-dwo').textContent =
+        'Pending $DWO: ' + customRound(ethers.utils.formatUnits(pD,18));
+
+      // 4) lock remain
+      const ts = await contract.stakeTimestamp(userAddress);
+      const end = ts.toNumber() + LOCK_DURATION;
+      const now = Math.floor(Date.now()/1000);
+      let lockTxt = 'Unlocked';
+      if (now < end) {
+        let rem = end - now;
+        const d = Math.floor(rem/86400); rem%=86400;
+        const h = String(Math.floor(rem/3600)).padStart(2,'0'); rem%=3600;
+        const m = String(Math.floor(rem/60)).padStart(2,'0'); rem%=60;
+        const s = String(rem).padStart(2,'0');
+        lockTxt = `${d}d ${h}:${m}:${s}`;
+      }
+      document.getElementById('lock-remain').textContent = 'Lock remain: ' + lockTxt;
+    }
+
+    // stake flow auto-approve+stake
+    async function doStake() {
+      const val = document.getElementById('stake-amt').value;
+      if (!val||parseFloat(val)<=0) return;
+      const amt = ethers.utils.parseUnits(val,18);
+      const al = await token.allowance(userAddress,CONTRACT);
+      if (al.lt(amt)) {
+        document.getElementById('status').textContent = 'Approving...';
+        await (await token.approve(CONTRACT,amt)).wait();
+        document.getElementById('status').textContent = 'Staking...';
+      } else {
+        document.getElementById('status').textContent = 'Staking...';
+      }
+      await (await contract.stake(amt)).wait();
+      document.getElementById('status').textContent = 'Staked!';
+      setTimeout(refreshAll,3000);
+    }
+
+    async function doUnstake() {
+      const val = document.getElementById('unstake-amt').value;
+      if (!val||parseFloat(val)<=0) return;
+      const amt = ethers.utils.parseUnits(val,18);
+      document.getElementById('status').textContent = 'Unstaking...';
+      try {
+        await (await contract.unstake(amt)).wait();
+        document.getElementById('status').textContent = 'Unstaked!';
+      } catch(e) {
+        document.getElementById('status').textContent = 'Lock active';
+      }
+      setTimeout(refreshAll,3000);
+    }
+
+    async function doClaim() {
+      document.getElementById('status').textContent = 'Claiming...';
+      await (await contract.claim()).wait();
+      document.getElementById('status').textContent = 'Claimed!';
+      setTimeout(refreshAll,3000);
+    }
+
+    async function setMaxStake() {
+      const bal = await token.balanceOf(userAddress);
+      const v = parseFloat(ethers.utils.formatUnits(bal,18));
+      document.getElementById('stake-amt').value = customRound(v);
+    }
+    async function setMaxUnstake() {
+      const info = await contract.userInfo(userAddress);
+      const v = parseFloat(ethers.utils.formatUnits(info.amount,18));
+      document.getElementById('unstake-amt').value = customRound(v);
+    }
+
+    document.getElementById('stake-btn').onclick     = doStake;
+    document.getElementById('unstake-btn').onclick   = doUnstake;
+    document.getElementById('claim-btn').onclick     = doClaim;
+    document.getElementById('stake-max').onclick     = setMaxStake;
+    document.getElementById('unstake-max').onclick   = setMaxUnstake;
+
+    window.addEventListener('load', connect);
+  </script>
+</body>
+</html>
