@@ -55,7 +55,6 @@
 </head>
 <body>
   <div class="container">
-    <h1>StakeToken Dashboard</h1>
     <div id="disconnect-area"></div>
     <p class="status" id="status">Connecting...</p>
 
@@ -79,14 +78,16 @@
       <button id="unstake-btn">Unstake</button>
     </div>
     <div class="group">
-      <button id="claim-btn">Claim All</button>
+      <button id="claim-btn">Claim</button>
     </div>
   </div>
 
   <script>
     const RPC_URL    = 'https://testnet-rpc.monad.xyz';
     const CHAIN_ID   = 10143;
-    const CONTRACT   = '0x23d7EA99Da16158EA2eC76755AE9313efDfc3A3f'; // replace with your deployed
+    const CONTRACT   = '0xc65a22FB37286bcFb5F2e373229BC44Ab9A9B02d';  // updated stake contract
+    const STAKE_TOKEN = '0x965f5c8Ad95fdFD330fBEf212a5Fd9869b907408'; // stake token
+
     const LOCK_DURATION = 3 * 24 * 3600; // 3 days
     const DWO_APR = 4320;
 
@@ -112,17 +113,13 @@
       "function stakeTimestamp(address) view returns (uint256)"
     ];
 
-    let provider, signer, contract, tokenContract, userAddress;
+    let provider, signer, contract, token, userAddress;
 
-    // minimal ERC20 for stakeToken (same as rewardToken math)
     const ERC20_ABI = [
       "function balanceOf(address) view returns (uint256)",
       "function approve(address,uint256) returns (bool)",
       "function allowance(address,address) view returns (uint256)"
     ];
-    // stakeToken address from contract
-    const STAKE_TOKEN = '0x965f5c8Ad95fdFD330fBEf212a5Fd9869b907408';
-    let token;
 
     function customRound(v) {
       const r = parseFloat(v).toFixed(2);
@@ -145,7 +142,6 @@
         contract = new ethers.Contract(CONTRACT, ABI, signer);
         token = new ethers.Contract(STAKE_TOKEN, ERC20_ABI, signer);
 
-        // show disconnect
         document.getElementById('status').textContent = '';
         const b = document.createElement('button');
         b.id = 'disconnect-btn';
@@ -162,12 +158,10 @@
     }
 
     async function refreshAll() {
-      // 1) staked
       const info = await contract.userInfo(userAddress);
       const staked = parseFloat(ethers.utils.formatUnits(info.amount,18));
       document.getElementById('staked').textContent = 'Staked: ' + customRound(staked);
 
-      // 2) APR total
       const totalStakedBN = await contract.totalStaked();
       let aprP = '0.00';
       if (!totalStakedBN.isZero()) {
@@ -178,11 +172,8 @@
         aprP = customRound(totalAPR - DWO_APR);
       }
       document.getElementById('apr-p').textContent = 'APR $P: ' + aprP + ' %';
-
-      // APR DWO fixed
       document.getElementById('apr-dwo').textContent = 'APR $DWO: ' + DWO_APR + ' %';
 
-      // 3) pending
       const pP = await contract.pendingReward(userAddress);
       const pD = await contract.pendingStakeInterest(userAddress);
       document.getElementById('pending-p').textContent   =
@@ -190,7 +181,6 @@
       document.getElementById('pending-dwo').textContent =
         'Pending $DWO: ' + customRound(ethers.utils.formatUnits(pD,18));
 
-      // 4) lock remain
       const ts = await contract.stakeTimestamp(userAddress);
       const end = ts.toNumber() + LOCK_DURATION;
       const now = Math.floor(Date.now()/1000);
@@ -206,7 +196,6 @@
       document.getElementById('lock-remain').textContent = 'Lock remain: ' + lockTxt;
     }
 
-    // stake flow auto-approve+stake
     async function doStake() {
       const val = document.getElementById('stake-amt').value;
       if (!val||parseFloat(val)<=0) return;
@@ -233,7 +222,7 @@
         await (await contract.unstake(amt)).wait();
         document.getElementById('status').textContent = 'Unstaked!';
       } catch(e) {
-        document.getElementById('status').textContent = 'Lock active';
+        document.getElementById('status').textContent = 'Still locked';
       }
       setTimeout(refreshAll,3000);
     }
