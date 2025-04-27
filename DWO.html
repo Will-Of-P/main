@@ -122,8 +122,7 @@
     ];
 
     function customRound(v) {
-      const r = parseFloat(v).toFixed(2);
-      return (parseFloat(r) - 0.01).toFixed(2);
+      return Math.floor(v * 100) / 100;
     }
 
     async function connect() {
